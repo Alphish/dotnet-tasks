@@ -5,24 +5,27 @@ using System.Threading.Tasks;
 
 namespace Alphicsh.Tasks;
 
-public abstract class ManagedTaskBase<TTask, TProgress> : IAwaitable
-    where TTask : Task
+public class ManagedTask<TResult, TProgress> : IManagedAwaitable<TResult, TProgress>
 {
-    protected TTask InnerTask { get; set; }
+    protected Task<TResult> InnerTask { get; set; }
     private CancellationTokenSource CancellationSource { get; }
+    public TResult? Result { get; private set; }
+    public event EventHandler<TResult>? Completed;
 
     private IProgress<TProgress> ProgressReporter { get; }
     public TProgress? CurrentProgress { get; private set; }
-
     public event EventHandler<TProgress>? ProgressChanged;
-    protected ManagedTaskBase(Func<CancellationToken, IProgress<TProgress>, TTask> taskMethod)
+
+    public ManagedTask(ManagedTaskMethod<TResult, TProgress> taskMethod)
     {
         CancellationSource = new CancellationTokenSource();
         ProgressReporter = new Progress<TProgress>(UpdateProgress);
-        InnerTask = taskMethod(CancellationSource.Token, ProgressReporter);
+
+        var taskStub = taskMethod(CancellationSource.Token, ProgressReporter);
+        InnerTask = taskStub.ContinueWith(ReportCompletion, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
-    public TaskAwaiter GetAwaiter()
+    public TaskAwaiter<TResult> GetAwaiter()
         => InnerTask.GetAwaiter();
 
     public void Cancel()
@@ -33,45 +36,19 @@ public abstract class ManagedTaskBase<TTask, TProgress> : IAwaitable
         CurrentProgress = progress;
         ProgressChanged?.Invoke(this, progress);
     }
-}
-
-public class ManagedTask<TProgress> : ManagedTaskBase<Task, TProgress>, IVoidAwaitable
-{
-    public event EventHandler? Completed;
-
-    public ManagedTask(ManagedTaskMethod<TProgress> taskMethod)
-        : base((cancellationToken, progressReporter) => taskMethod(cancellationToken, progressReporter))
-    {
-        InnerTask = InnerTask.ContinueWith(ReportCompletion, TaskContinuationOptions.OnlyOnRanToCompletion);
-    }
-
-    protected virtual void ReportCompletion(Task task)
-    {
-        Completed?.Invoke(this, EventArgs.Empty);
-    }
-}
-
-public class ManagedTask<TResult, TProgress> : ManagedTaskBase<Task<TResult>, TProgress>, IAwaitable<TResult>
-{
-    public event EventHandler? Completed;
-    public event EventHandler<TResult>? ResultCompleted;
-
-    public ManagedTask(ManagedTaskMethod<TResult, TProgress> taskMethod)
-        : base((cancellationSource, progressReporter) => taskMethod(cancellationSource, progressReporter))
-    {
-        InnerTask = InnerTask.ContinueWith(ReportCompletion, TaskContinuationOptions.OnlyOnRanToCompletion);
-    }
-
-    public TResult Result => InnerTask.Result;
-
-    public new TaskAwaiter<TResult> GetAwaiter()
-        => InnerTask.GetAwaiter();
 
     private TResult ReportCompletion(Task<TResult> task)
     {
-        Completed?.Invoke(this, EventArgs.Empty);
-        ResultCompleted?.Invoke(this, task.Result);
+        Completed?.Invoke(this, task.Result);
         return task.Result;
+    }
+}
+
+public class ManagedTask<TProgress> : ManagedTask<TaskBlank, TProgress>, IManagedAwaitable<TProgress>
+{
+    public ManagedTask(ManagedTaskMethod<TProgress> taskMethod)
+        : base((cancellationToken, progressReporter) => TaskBlank.FromTask(taskMethod(cancellationToken, progressReporter)))
+    {
     }
 }
 

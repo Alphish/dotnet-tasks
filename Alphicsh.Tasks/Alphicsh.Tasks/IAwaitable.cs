@@ -3,14 +3,13 @@ using System.Runtime.CompilerServices;
 
 namespace Alphicsh.Tasks;
 
-public interface IAwaitable
+public interface IAwaitable<TResult>
 {
-    TaskAwaiter GetAwaiter();
+    TaskAwaiter<TResult> GetAwaiter();
+    TResult? Result { get; }
+    event EventHandler<TResult>? Completed;
 }
 
-public interface IAwaitable<TResult> : IAwaitable
+public interface IAwaitable : IAwaitable<TaskBlank>
 {
-    new TaskAwaiter<TResult> GetAwaiter();
-    TResult Result { get; }
-    event EventHandler<TResult>? ResultCompleted;
 }
