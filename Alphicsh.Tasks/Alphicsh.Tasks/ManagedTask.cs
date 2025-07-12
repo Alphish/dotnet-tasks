@@ -2,26 +2,28 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Alphicsh.Tasks.Progress;
 
 namespace Alphicsh.Tasks;
 
-public class ManagedTask<TResult, TProgress> : IManagedAwaitable<TResult, TProgress>
+public class ManagedTask<TResult> : IManagedAwaitable<TResult>
 {
     protected Task<TResult> InnerTask { get; set; }
     private CancellationTokenSource CancellationSource { get; }
+    private ProgressManager ProgressManager { get; }
     public TResult? Result { get; private set; }
-    public event EventHandler<TResult>? Completed;
+    public event EventHandler<TResult>? TaskCompleted;
 
-    private IProgress<TProgress> ProgressReporter { get; }
-    public TProgress? CurrentProgress { get; private set; }
-    public event EventHandler<TProgress>? ProgressChanged;
+    // --------
+    // Creation
+    // --------
 
-    public ManagedTask(ManagedTaskMethod<TResult, TProgress> taskMethod)
+    public ManagedTask(Func<CancellationToken, IProgress<object>, Task<TResult>> taskMethod)
     {
         CancellationSource = new CancellationTokenSource();
-        ProgressReporter = new Progress<TProgress>(UpdateProgress);
+        ProgressManager = new ProgressManager();
 
-        var taskStub = taskMethod(CancellationSource.Token, ProgressReporter);
+        var taskStub = taskMethod(CancellationSource.Token, ProgressManager);
         InnerTask = taskStub.ContinueWith(ReportCompletion, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
@@ -29,34 +31,35 @@ public class ManagedTask<TResult, TProgress> : IManagedAwaitable<TResult, TProgr
         => InnerTask.GetAwaiter();
 
     public void Cancel()
-        => CancellationSource.Cancel();
-
-    protected void UpdateProgress(TProgress progress)
     {
-        CurrentProgress = progress;
-        ProgressChanged?.Invoke(this, progress);
+        ProgressManager.Cancel();
+        CancellationSource.Cancel();
     }
 
     private TResult ReportCompletion(Task<TResult> task)
     {
-        Completed?.Invoke(this, task.Result);
+        TaskCompleted?.Invoke(this, task.Result);
         return task.Result;
     }
+
+    public IProgressSubject<TProgress> ProgressSubjectOf<TProgress>()
+        => new ProgressSubject<TProgress>(ProgressManager);
 }
 
-public class ManagedTask<TProgress> : ManagedTask<TaskBlank, TProgress>, IManagedAwaitable<TProgress>
+public class ManagedTask : ManagedTask<TaskBlank>, IManagedAwaitable
 {
-    public ManagedTask(ManagedTaskMethod<TProgress> taskMethod)
+    public ManagedTask(Func<CancellationToken, IProgress<object>, Task> taskMethod)
         : base((cancellationToken, progressReporter) => TaskBlank.FromTask(taskMethod(cancellationToken, progressReporter)))
     {
     }
-}
 
-public static class ManagedTask
-{
-    public static ManagedTask<TProgress> Create<TProgress>(ManagedTaskMethod<TProgress> taskMethod)
-        => new ManagedTask<TProgress>(taskMethod);
+    public static ManagedTask Create(Func<CancellationToken, IProgress<object>, Task> taskMethod)
+        => new ManagedTask(taskMethod);
 
-    public static ManagedTask<TResult, TProgress> FromResult<TResult, TProgress>(ManagedTaskMethod<TResult, TProgress> taskMethod)
-        => new ManagedTask<TResult, TProgress>(taskMethod);
+    public static ManagedTask<TResult> Create<TResult>(Func<CancellationToken, IProgress<object>, Task<TResult>> taskMethod)
+        => new ManagedTask<TResult>(taskMethod);
+
+    public static ManagedTask<TResult> FromResult<TResult>(TResult result)
+        => new ManagedTask<TResult>((cancellationToken, progress) => Task.FromResult(result));
+
 }

@@ -7,7 +7,7 @@ public interface IAwaitable<TResult>
 {
     TaskAwaiter<TResult> GetAwaiter();
     TResult? Result { get; }
-    event EventHandler<TResult>? Completed;
+    event EventHandler<TResult>? TaskCompleted;
 }
 
 public interface IAwaitable : IAwaitable<TaskBlank>

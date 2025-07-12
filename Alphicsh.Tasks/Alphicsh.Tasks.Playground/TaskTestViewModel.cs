@@ -64,8 +64,10 @@ public class TaskTestViewModel : INotifyPropertyChanged
     public ICommand TransformCommand { get; }
     private async void Transform()
     {
-        TransformTask = ManagedTask.FromResult<string, IntegerProgress>(DoTransform);
-        TransformTask.ProgressChanged += (sender, progress) => TaskProgress = progress.Current;
+        TransformTask?.Cancel();
+
+        TransformTask = ManagedTask.Create(DoTransform);
+        TransformTask.ProgressSubjectOf<IntegerProgress>().ProgressChanged += (sender, progress) => TaskProgress = progress.Current;
 
         try
         {
@@ -83,9 +85,9 @@ public class TaskTestViewModel : INotifyPropertyChanged
         TransformTask?.Cancel();
     }
 
-    private ManagedTask<string, IntegerProgress>? TransformTask { get; set; }
+    private ManagedTask<string>? TransformTask { get; set; }
 
-    private async Task<string> DoTransform(CancellationToken cancellationToken, IProgress<IntegerProgress> progressReporter)
+    private async Task<string> DoTransform(CancellationToken cancellationToken, IProgress<object> progressReporter)
     {
         for (var i = 0; i < 100; i++)
         {
