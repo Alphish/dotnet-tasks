@@ -1,10 +1,9 @@
-﻿using System;
+﻿using Alphicsh.Tasks.Progress;
 
 namespace Alphicsh.Tasks;
 
-public interface IManagedTask<TProgress>
+public interface IManagedTask
 {
     void Cancel();
-    TProgress? CurrentProgress { get; }
-    event EventHandler<TProgress>? ProgressChanged;
+    IProgressSubject<TProgress> ProgressSubjectOf<TProgress>();
 }
