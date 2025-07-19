@@ -12,6 +12,7 @@ public class ManagedTask<TResult> : IManagedAwaitable<TResult>
     private CancellationTokenSource CancellationSource { get; }
     private ProgressManager ProgressManager { get; }
     public TResult? Result { get; private set; }
+    public bool RanToCompletion { get; private set; }
     public event EventHandler<TResult>? TaskCompleted;
 
     // --------
@@ -21,10 +22,18 @@ public class ManagedTask<TResult> : IManagedAwaitable<TResult>
     public ManagedTask(Func<CancellationToken, IProgress<object>, Task<TResult>> taskMethod)
     {
         CancellationSource = new CancellationTokenSource();
-        ProgressManager = new ProgressManager();
+        ProgressManager = new ProgressManager(this);
+        RanToCompletion = false;
 
         var taskStub = taskMethod(CancellationSource.Token, ProgressManager);
         InnerTask = taskStub.ContinueWith(ReportCompletion, TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    public ManagedTask(CancellationTokenSource cancellationTokenSource, ProgressManager progressManager, Task<TResult> task)
+    {
+        CancellationSource = cancellationTokenSource;
+        ProgressManager = progressManager;
+        InnerTask = task.ContinueWith(ReportCompletion, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
     public TaskAwaiter<TResult> GetAwaiter()
@@ -38,12 +47,16 @@ public class ManagedTask<TResult> : IManagedAwaitable<TResult>
 
     private TResult ReportCompletion(Task<TResult> task)
     {
+        RanToCompletion = true;
         TaskCompleted?.Invoke(this, task.Result);
         return task.Result;
     }
 
-    public IProgressSubject<TProgress> ProgressSubjectOf<TProgress>()
+    public IProgressSubject<TProgress> GetProgressSubjectOf<TProgress>()
         => new ProgressSubject<TProgress>(ProgressManager);
+
+    public void LinkProgress(IProgress<object> progress)
+        => ProgressManager.Link(progress);
 }
 
 public class ManagedTask : ManagedTask<TaskBlank>, IManagedAwaitable

@@ -7,6 +7,7 @@ public interface IAwaitable<TResult>
 {
     TaskAwaiter<TResult> GetAwaiter();
     TResult? Result { get; }
+    bool RanToCompletion { get; }
     event EventHandler<TResult>? TaskCompleted;
 }
 

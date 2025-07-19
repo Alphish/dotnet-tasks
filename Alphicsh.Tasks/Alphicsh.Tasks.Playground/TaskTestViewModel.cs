@@ -1,13 +1,20 @@
 ﻿using System.ComponentModel;
 using System.Windows.Input;
+using Alphicsh.Tasks.Channels;
 using Alphicsh.Tasks.Progress;
 
 namespace Alphicsh.Tasks.Playground;
 
 public class TaskTestViewModel : INotifyPropertyChanged
 {
+    private ITaskChannel<string> TransformTaskChannel { get; }
+
     public TaskTestViewModel()
     {
+        TransformTaskChannel = new LastTaskChannel<string>();
+        TransformTaskChannel.GetProgressSubjectOf<IntegerProgress>().ProgressChanged += (sender, progress) => TaskProgress = progress.Current;
+        TransformTaskChannel.TaskCompleted += (sender, result) => OutputText = result;
+
         TransformCommand = new TestCommand(Transform);
         CancelCommand = new TestCommand(CancelTask);
     }
@@ -62,30 +69,17 @@ public class TaskTestViewModel : INotifyPropertyChanged
     }
 
     public ICommand TransformCommand { get; }
-    private async void Transform()
+    private void Transform()
     {
-        TransformTask?.Cancel();
-
-        TransformTask = ManagedTask.Create(DoTransform);
-        TransformTask.ProgressSubjectOf<IntegerProgress>().ProgressChanged += (sender, progress) => TaskProgress = progress.Current;
-
-        try
-        {
-            OutputText = await TransformTask!;
-        }
-        catch (OperationCanceledException)
-        {
-            OutputText = "Canceled";
-        }
+        var transformTask = ManagedTask.Create(DoTransform);
+        TransformTaskChannel.AcceptTask(transformTask);
     }
 
     public ICommand CancelCommand { get; }
     private void CancelTask()
     {
-        TransformTask?.Cancel();
+        TransformTaskChannel.Cancel();
     }
-
-    private ManagedTask<string>? TransformTask { get; set; }
 
     private async Task<string> DoTransform(CancellationToken cancellationToken, IProgress<object> progressReporter)
     {
